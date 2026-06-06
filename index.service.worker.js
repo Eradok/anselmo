@@ -100,6 +100,11 @@ self.addEventListener(
 		const base = referrer.slice(0, referrer.lastIndexOf('/') + 1);
 		const local = url.startsWith(base) ? url.replace(base, '') : '';
 		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
+		
+		if (!event.request.url.startsWith(self.location.origin)) {
+			return;
+		}
+
 		if (isNavigate || isCacheable) {
 			event.respondWith((async () => {
 				// Try to use cache first
