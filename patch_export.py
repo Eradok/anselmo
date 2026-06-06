@@ -83,13 +83,6 @@ JS_EARLY = """<script>
 </script>
 """
 
-# ── HTML patching ─────────────────────────────────────
-
-def check_file(path):
-    if not os.path.exists(path):
-        return False
-    return True
-
 def read_file(path):
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
@@ -97,6 +90,8 @@ def read_file(path):
 def write_file(path, content):
     with open(path, "w", encoding="utf-8") as f:
         f.write(content)
+
+# ── HTML patches ──────────────────────────────────────
 
 def inject_css(html):
     if "#monitor-overlay" in html:
@@ -148,23 +143,15 @@ def inject_js_early(html):
                     print("   JS: already in correct position, skipping")
                     return html
                 else:
-                    print("   JS: found but in wrong position, re-injecting")
-                    html = re.sub(
-                        r'<script>\s*/\* MONITOR OVERLAY.*?</script>\s*',
-                        '', html, flags=re.DOTALL
-                    )
+                    print("   JS: wrong position, re-injecting")
+                    html = re.sub(r'<script>\s*/\* MONITOR OVERLAY.*?</script>\s*', '', html, flags=re.DOTALL)
                     break
         else:
             print("   JS: already present, skipping")
             return html
 
-    index_js_patterns = [
-        '<script src="index.js">',
-        "<script src='index.js'>",
-        '<script src="anselmo.blog.js">',
-        "<script src='anselmo.blog.js'>",
-    ]
-    for pattern in index_js_patterns:
+    for pattern in ['<script src="index.js">', "<script src='index.js'>",
+                    '<script src="anselmo.blog.js">', "<script src='anselmo.blog.js'>"]:
         if pattern in html:
             html = html.replace(pattern, JS_EARLY + "\n\t\t" + pattern, 1)
             print("   JS: injected OK (before " + pattern + ")")
@@ -179,137 +166,41 @@ def inject_js_early(html):
     print("   JS: ERROR - could not find injection point")
     return html
 
-# ── Service worker patching ───────────────────────────
-
-# The new fetch handler that skips COEP headers for cross-origin requests
-# and also skips the broken preloadResponse for navigate requests to cross-origin URLs
-SW_FETCH_REPLACEMENT = '''self.addEventListener(
-	'fetch',
-	/**
-	 * Triggered on fetch
-	 * @param {FetchEvent} event
-	 */
-	(event) => {
-		const isNavigate = event.request.mode === 'navigate';
-		const url = event.request.url || '';
-		const referrer = event.request.referrer || '';
-		const base = referrer.slice(0, referrer.lastIndexOf('/') + 1);
-		const local = url.startsWith(base) ? url.replace(base, '') : '';
-		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
-
-		// Let cross-origin requests pass through completely untouched.
-		// This allows the iframe to load without COEP interference.
-		if (!url.startsWith(self.location.origin)) {
-			return;
-		}
-
-		if (isNavigate || isCacheable) {
-			event.respondWith((async () => {
-				const cache = await caches.open(CACHE_NAME);
-				if (isNavigate) {
-					const fullCache = await Promise.all(FULL_CACHE.map((name) => cache.match(name)));
-					const missing = fullCache.some((v) => v === undefined);
-					if (missing) {
-						try {
-							const response = await fetchAndCache(event, cache, isCacheable);
-							return response;
-						} catch (e) {
-							console.error('Network error: ', e); // eslint-disable-line no-console
-							return caches.match(OFFLINE_URL);
-						}
-					}
-				}
-				let cached = await cache.match(event.request);
-				if (cached != null) {
-					if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
-						cached = ensureCrossOriginIsolationHeaders(cached);
-					}
-					return cached;
-				}
-				const response = await fetchAndCache(event, cache, isCacheable);
-				return response;
-			})());
-		} else if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
-			event.respondWith((async () => {
-				let response = await fetch(event.request);
-				response = ensureCrossOriginIsolationHeaders(response);
-				return response;
-			})());
-		}
-	}
-);'''
-
-# Also fix fetchAndCache to not use preloadResponse for cross-origin requests
-FETCH_AND_CACHE_REPLACEMENT = '''async function fetchAndCache(event, cache, isCacheable) {
-	const url = event.request.url || '';
-	/** @type { Response } */
-	let response;
-	// Only use preloadResponse for same-origin requests
-	if (url.startsWith(self.location.origin)) {
-		response = await event.preloadResponse;
-	}
-	if (response == null) {
-		response = await self.fetch(event.request);
-	}
-
-	if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
-		response = ensureCrossOriginIsolationHeaders(response);
-	}
-
-	if (isCacheable) {
-		cache.put(event.request, response.clone());
-	}
-
-	return response;
-}'''
+# ── Service worker patch ──────────────────────────────
+# Simply disable navigationPreload in the activate handler.
+# This stops the "preloadResponse cancelled" warning and prevents
+# the service worker from intercepting the iframe load.
 
 def patch_service_worker(sw):
-    changed = False
+    marker = "/* PATCHED: navigationPreload disabled */"
+    if marker in sw:
+        print("   SW: already patched, skipping")
+        return sw, False
 
-    # Fix fetchAndCache
-    if "// Only use preloadResponse for same-origin requests" in sw:
-        print("   SW fetchAndCache: already patched, skipping")
-    else:
-        old = re.search(
-            r'async function fetchAndCache\(event, cache, isCacheable\).*?^}',
-            sw, flags=re.DOTALL | re.MULTILINE
-        )
-        if old:
-            sw = sw[:old.start()] + FETCH_AND_CACHE_REPLACEMENT + sw[old.end():]
-            print("   SW fetchAndCache: patched OK")
-            changed = True
-        else:
-            print("   SW fetchAndCache: ERROR - could not find function to patch")
+    # Replace the line that enables navigationPreload with one that disables it
+    old = "return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();"
+    new = marker + "\n\t\treturn ('navigationPreload' in self.registration) ? self.registration.navigationPreload.disable() : Promise.resolve();"
 
-    # Fix fetch listener
-    if "Let cross-origin requests pass through completely untouched" in sw:
-        print("   SW fetch listener: already patched, skipping")
-    else:
-        old = re.search(
-            r"self\.addEventListener\(\s*'fetch'.*?\);",
-            sw, flags=re.DOTALL
-        )
-        if old:
-            sw = sw[:old.start()] + SW_FETCH_REPLACEMENT + sw[old.end():]
-            print("   SW fetch listener: patched OK")
-            changed = True
-        else:
-            print("   SW fetch listener: ERROR - could not find listener to patch")
+    if old in sw:
+        sw = sw.replace(old, new, 1)
+        print("   SW: navigationPreload disabled OK")
+        return sw, True
 
-    return sw, changed
+    print("   SW: WARNING - could not find navigationPreload line (may already be patched or changed)")
+    return sw, False
 
-# ── Verify ───────────────────────────────────────────
+# ── Verify ────────────────────────────────────────────
 
 def verify_html(html):
     print("\nVerifying index.html...")
     checks = [
-        ("monitor-overlay CSS",   "#monitor-overlay"      ),
-        ("monitor-frame CSS",     "#monitor-frame"        ),
-        ("monitor-overlay DIV",   'id="monitor-overlay"'  ),
-        ("monitor-frame DIV",     'id="monitor-frame"'    ),
-        ("monitor-iframe DIV",    'id="monitor-iframe"'   ),
-        ("JS queue system",       "_monitorQueue"         ),
-        ("JS poll loop",          "requestAnimationFrame" ),
+        ("monitor-overlay CSS",  "#monitor-overlay"      ),
+        ("monitor-frame CSS",    "#monitor-frame"        ),
+        ("monitor-overlay DIV",  'id="monitor-overlay"'  ),
+        ("monitor-frame DIV",    'id="monitor-frame"'    ),
+        ("monitor-iframe DIV",   'id="monitor-iframe"'   ),
+        ("JS queue system",      "_monitorQueue"         ),
+        ("JS poll loop",         "requestAnimationFrame" ),
     ]
     all_ok = True
     for name, token in checks:
@@ -333,27 +224,21 @@ def verify_html(html):
 
 def verify_sw(sw):
     print("\nVerifying " + SW_FILE + "...")
-    checks = [
-        ("cross-origin passthrough", "Let cross-origin requests pass through completely untouched"),
-        ("preloadResponse fix",      "Only use preloadResponse for same-origin requests"),
-    ]
-    all_ok = True
-    for name, token in checks:
-        if token in sw:
-            print("  OK      " + name)
-        else:
-            print("  MISSING " + name)
-            all_ok = False
-    return all_ok
+    if "navigationPreload disabled" in sw:
+        print("  OK      navigationPreload disabled")
+        return True
+    else:
+        print("  MISSING navigationPreload patch")
+        return False
 
 # ── RUN ──────────────────────────────────────────────
 
 print("=== patch_export.py ===\n")
 
-# HTML
-if not check_file(HTML_FILE):
-    print("ERROR: " + HTML_FILE + " not found. Run this from the export folder.")
+if not os.path.exists(HTML_FILE):
+    print("ERROR: index.html not found. Run this from the export folder.")
     sys.exit(1)
+
 print("Found: " + HTML_FILE)
 print("\nPatching HTML...")
 html = read_file(HTML_FILE)
@@ -363,25 +248,21 @@ html = inject_js_early(html)
 write_file(HTML_FILE, html)
 html_ok = verify_html(html)
 
-# Service worker
 print("")
-if not check_file(SW_FILE):
-    print("WARNING: " + SW_FILE + " not found - skipping service worker patch")
+if not os.path.exists(SW_FILE):
+    print("WARNING: " + SW_FILE + " not found, skipping")
     sw_ok = False
 else:
     print("Found: " + SW_FILE)
     print("\nPatching service worker...")
     sw = read_file(SW_FILE)
-    sw, sw_changed = patch_service_worker(sw)
-    if sw_changed:
+    sw, changed = patch_service_worker(sw)
+    if changed:
         write_file(SW_FILE, sw)
-        print("   SW: saved OK")
     sw_ok = verify_sw(sw)
 
 print("")
 if html_ok and sw_ok:
-    print("✅ All checks passed - index.html and service worker are ready!")
-elif html_ok:
-    print("✅ HTML ready. ⚠️  Service worker had issues - check above.")
+    print("✅ All checks passed - ready to deploy!")
 else:
-    print("❌ Some items missing - check above.")
+    print("❌ Some items need attention - check above.")

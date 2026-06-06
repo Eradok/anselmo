@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1780785099|438252857';
+const CACHE_VERSION = '1780787640|2979187703';
 /** @type {string} */
 const CACHE_PREFIX = 'anselmo.blog-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
@@ -32,7 +32,8 @@ self.addEventListener('activate', (event) => {
 		}
 	).then(function () {
 		// Enable navigation preload if available.
-		return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();
+		/* PATCHED: navigationPreload disabled */
+		return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.disable() : Promise.resolve();
 	}));
 });
 
@@ -67,14 +68,11 @@ function ensureCrossOriginIsolationHeaders(response) {
  * @returns {Response}
  */
 async function fetchAndCache(event, cache, isCacheable) {
-	const url = event.request.url || '';
+	// Use the preloaded response, if it's there
 	/** @type { Response } */
-	let response;
-	// Only use preloadResponse for same-origin requests
-	if (url.startsWith(self.location.origin)) {
-		response = await event.preloadResponse;
-	}
+	let response = await event.preloadResponse;
 	if (response == null) {
+		// Or, go over network.
 		response = await self.fetch(event.request);
 	}
 
@@ -83,6 +81,7 @@ async function fetchAndCache(event, cache, isCacheable) {
 	}
 
 	if (isCacheable) {
+		// And update the cache
 		cache.put(event.request, response.clone());
 	}
 
@@ -100,50 +99,6 @@ self.addEventListener(
 		const url = event.request.url || '';
 		const referrer = event.request.referrer || '';
 		const base = referrer.slice(0, referrer.lastIndexOf('/') + 1);
-		const local = url.startsWith(base) ? url.replace(base, '') : '';
-		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
-
-		// Let cross-origin requests pass through completely untouched.
-		// This allows the iframe to load without COEP interference.
-		if (!url.startsWith(self.location.origin)) {
-			return;
-		}
-
-		if (isNavigate || isCacheable) {
-			event.respondWith((async () => {
-				const cache = await caches.open(CACHE_NAME);
-				if (isNavigate) {
-					const fullCache = await Promise.all(FULL_CACHE.map((name) => cache.match(name)));
-					const missing = fullCache.some((v) => v === undefined);
-					if (missing) {
-						try {
-							const response = await fetchAndCache(event, cache, isCacheable);
-							return response;
-						} catch (e) {
-							console.error('Network error: ', e); // eslint-disable-line no-console
-							return caches.match(OFFLINE_URL);
-						}
-					}
-				}
-				let cached = await cache.match(event.request);
-				if (cached != null) {
-					if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
-						cached = ensureCrossOriginIsolationHeaders(cached);
-					}
-					return cached;
-				}
-				const response = await fetchAndCache(event, cache, isCacheable);
-				return response;
-			})());
-		} else if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
-			event.respondWith((async () => {
-				let response = await fetch(event.request);
-				response = ensureCrossOriginIsolationHeaders(response);
-				return response;
-			})());
-		}
-	}
-);
 		const local = url.startsWith(base) ? url.replace(base, '') : '';
 		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
 		if (isNavigate || isCacheable) {
