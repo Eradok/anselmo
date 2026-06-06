@@ -4,7 +4,6 @@
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
 		<title>anselmo.blog</title>
-
 		<style>
 html, body, #canvas {
 	margin: 0;
@@ -90,59 +89,13 @@ body {
 	text-align: center;
 	z-index: 1;
 }
-
-/* -------------------------
-   MONITOR OVERLAY
--------------------------- */
-
-#monitor-overlay {
-	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	pointer-events: none;
-	z-index: 10;
-	overflow: hidden;
-}
-
-#monitor-frame {
-	position: absolute;
-	width: 420px;
-	height: 700px;
-	transform-origin: center center;
-	pointer-events: auto;
-	will-change: transform, left, top;
-	background: #111;
-	border-radius: 8px;
-	padding: 10px;
-	box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 8px rgba(0,0,0,0.6);
-	display: none;
-}
-
-#monitor-iframe {
-	width: 100%;
-	height: 100%;
-	border: none;
-	border-radius: 4px;
-	display: block;
-}
-
 		</style>
+		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
+<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<link rel="manifest" href="index.manifest.json">
 
-		<link id="-gd-engine-icon" rel="icon" type="image/png" href="anselmo.blog.icon.png" />
-		<link rel="apple-touch-icon" href="anselmo.blog.apple-touch-icon.png"/>
-		<link rel="manifest" href="anselmo.blog.manifest.json">
 	</head>
-
 	<body>
-
-		<div id="monitor-overlay">
-			<div id="monitor-frame">
-				<iframe id="monitor-iframe" src="https://anselmo.blog" scrolling="no" frameborder="0"></iframe>
-			</div>
-		</div>
-
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
 		</canvas>
@@ -152,70 +105,17 @@ body {
 		</noscript>
 
 		<div id="status">
-			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="anselmo.blog.png" alt="">
+			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
 			<progress id="status-progress"></progress>
 			<div id="status-notice"></div>
 		</div>
 
-		<script src="anselmo.blog.js"></script>
-
+		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"anselmo.blog","experimentalVK":false,"fileSizes":{"anselmo.blog.pck":9992204,"anselmo.blog.wasm":37695054},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"anselmo.blog.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10131928,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
-/* -------------------------
-   MONITOR OVERLAY SYSTEM
--------------------------- */
-(function () {
-	const frame = document.getElementById('monitor-frame');
-
-	const FRAME_W = 420;
-	const FRAME_H = 700;
-	const MAX_ROTATE_Y = 45;
-	const MAX_ROTATE_X = 30;
-
-	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
-
-		// Hidden signal from Godot: normX == -1 means not visible
-		if (normX < 0) {
-			frame.style.display = 'none';
-			return;
-		}
-
-		frame.style.display = 'block';
-
-		// Use the actual canvas element size so it works at any browser window size
-		const canvas = document.getElementById('canvas');
-		const cw = canvas ? canvas.clientWidth  : window.innerWidth;
-		const ch = canvas ? canvas.clientHeight : window.innerHeight;
-
-		// Convert normalised Godot coords to CSS pixel position
-		const anchorX = normX * cw;
-		const anchorY = normY * ch;
-
-		// Centre the frame on the anchor point
-		const left = anchorX - FRAME_W / 2;
-		const top  = anchorY - FRAME_H / 2;
-
-		// Clamp rotation so it never flips inside-out
-		const ry = Math.max(-MAX_ROTATE_Y, Math.min(MAX_ROTATE_Y, -hAngle));
-		const rx = Math.max(-MAX_ROTATE_X, Math.min(MAX_ROTATE_X,  vAngle));
-
-		frame.style.left = left + 'px';
-		frame.style.top  = top  + 'px';
-		frame.style.transform = [
-			'perspective(1200px)',
-			'rotateY(' + ry + 'deg)',
-			'rotateX(' + rx + 'deg)',
-			'scale(' + scaleFactor + ')'
-		].join(' ');
-	};
-}());
-
-/* -------------------------
-   ORIGINAL GODOT LOADER — UNTOUCHED
--------------------------- */
 (function () {
 	const statusOverlay = document.getElementById('status');
 	const statusProgress = document.getElementById('status-progress');
@@ -275,6 +175,7 @@ const engine = new Engine(GODOT_CONFIG);
 			} catch (err) {
 				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
 			}
+			// There's a chance that installing the service worker would fix the issue
 			Promise.race([
 				serviceWorkerRegistrationPromise.then((registration) => {
 					if (registration != null) {
@@ -282,13 +183,18 @@ const engine = new Engine(GODOT_CONFIG);
 					}
 					return registration;
 				}).then(() => engine.installServiceWorker()),
+				// For some reason, `getRegistration()` can stall
 				new Promise((resolve) => {
 					setTimeout(() => resolve(), 2000);
 				}),
-			]).catch((err) => {
+			]).then(() => {
+				// Reload if there was no error.
+				window.location.reload();
+			}).catch((err) => {
 				console.error('Error while registering service worker:', err);
 			});
 		} else {
+			// Display the message as usual
 			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
 			displayFailureNotice(missingMsg + missing.join('\n'));
 		}
@@ -312,3 +218,4 @@ const engine = new Engine(GODOT_CONFIG);
 		</script>
 	</body>
 </html>
+
