@@ -50,9 +50,9 @@ HTML_DIV = """	<div id="monitor-overlay">
 	</div>
 """
 
-JS = """	/* -------------------------
-	   MONITOR OVERLAY SYSTEM
-	-------------------------- */
+# This goes in its OWN <script> tag BEFORE index.js loads
+JS_EARLY = """<script>
+	/* MONITOR OVERLAY - must be defined before Godot starts */
 	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
 		var frame = document.getElementById('monitor-frame');
 		if (!frame) { console.error('monitor-frame not found'); return; }
@@ -66,17 +66,15 @@ JS = """	/* -------------------------
 		var ch = canvas ? canvas.clientHeight : window.innerHeight;
 		var anchorX = normX * cw;
 		var anchorY = normY * ch;
-		var FRAME_W = 420;
-		var FRAME_H = 700;
-		var left = anchorX - FRAME_W / 2;
-		var top  = anchorY - FRAME_H / 2;
-		var MAX_Y = 45; var MAX_X = 30;
-		var ry = Math.max(-MAX_Y, Math.min(MAX_Y, -hAngle));
-		var rx = Math.max(-MAX_X, Math.min(MAX_X,  vAngle));
+		var left = anchorX - 210;
+		var top  = anchorY - 350;
+		var ry = Math.max(-45, Math.min(45, -hAngle));
+		var rx = Math.max(-30, Math.min(30,  vAngle));
 		frame.style.left = left + 'px';
 		frame.style.top  = top  + 'px';
 		frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
 	};
+</script>
 """
 
 def check_file():
@@ -110,7 +108,6 @@ def inject_div(html):
         print("  DIV: already present, skipping")
         return html
 
-    # Try every likely variation of the canvas tag
     candidates = [
         '<canvas id="canvas">',
         "<canvas id='canvas'>",
@@ -120,55 +117,97 @@ def inject_div(html):
     for candidate in candidates:
         if candidate in html:
             html = html.replace(candidate, HTML_DIV + "\n\t\t" + candidate, 1)
-            print("  DIV: injected OK (matched: " + candidate + ")")
+            print("  DIV: injected OK")
             return html
 
-    # Fallback: find <canvas using regex
     match = re.search(r'<canvas\b[^>]*>', html, re.IGNORECASE)
     if match:
         canvas_tag = match.group(0)
         html = html.replace(canvas_tag, HTML_DIV + "\n\t\t" + canvas_tag, 1)
-        print("  DIV: injected OK (regex match: " + canvas_tag + ")")
+        print("  DIV: injected OK (regex)")
         return html
 
-    # Last resort: inject after <body>
     if "<body>" in html:
         html = html.replace("<body>", "<body>\n" + HTML_DIV, 1)
-        print("  DIV: injected OK (fallback: after <body>)")
+        print("  DIV: injected OK (after <body>)")
         return html
 
-    print("  DIV: ERROR - could not find any injection point")
+    print("  DIV: ERROR - could not find injection point")
     return html
 
-def inject_js(html):
+def remove_old_js(html):
+    """Remove any old inline updateMonitorOverlay from inside a <script> block"""
+    if "updateMonitorOverlay" not in html:
+        return html, False
+
+    # If it's already in its own early <script> block before index.js, leave it
+    early_marker = "<script>\n\t/* MONITOR OVERLAY"
+    if early_marker in html:
+        return html, True  # already in correct position
+
+    # Find and remove the old function from wherever it is inside a script block
+    pattern = r'\s*/\*[^*]*MONITOR OVERLAY[^*]*\*/\s*window\.updateMonitorOverlay\s*=\s*function\s*\([^)]*\)\s*\{[^}]*(?:\{[^}]*\}[^}]*)*\};\s*'
+    cleaned = re.sub(pattern, '\n', html, flags=re.DOTALL)
+    if cleaned != html:
+        print("   JS: removed old inline version")
+        return cleaned, False
+    return html, False
+
+def inject_js_early(html):
     if "updateMonitorOverlay" in html:
-        print("   JS: already present, skipping")
+        # Check if it's already in the right place (before index.js src tag)
+        js_pos = html.find("updateMonitorOverlay")
+        # Find the index.js script tag
+        index_js_patterns = [
+            '<script src="index.js">',
+            "<script src='index.js'>",
+            '<script src="anselmo.blog.js">',
+            "<script src='anselmo.blog.js'>",
+        ]
+        for pattern in index_js_patterns:
+            src_pos = html.find(pattern)
+            if src_pos != -1:
+                if js_pos < src_pos:
+                    print("   JS: already in correct position (before index.js), skipping")
+                    return html
+                else:
+                    print("   JS: found but in wrong position, will re-inject")
+                    # Remove old version first
+                    html, _ = remove_old_js(html)
+                    break
+
+    # Find the index.js (or game js) script src tag to inject before it
+    index_js_patterns = [
+        '<script src="index.js">',
+        "<script src='index.js'>",
+        '<script src="anselmo.blog.js">',
+        "<script src='anselmo.blog.js'>",
+    ]
+    for pattern in index_js_patterns:
+        if pattern in html:
+            html = html.replace(pattern, JS_EARLY + "\n\t\t" + pattern, 1)
+            print("   JS: injected OK (own script tag before " + pattern + ")")
+            return html
+
+    # Fallback: inject before first <script src=
+    match = re.search(r'<script\s+src=', html, re.IGNORECASE)
+    if match:
+        html = html[:match.start()] + JS_EARLY + "\n\t\t" + html[match.start():]
+        print("   JS: injected OK (before first script src, fallback)")
         return html
 
-    idx = html.find("const GODOT_CONFIG")
-    if idx == -1:
-        print("   JS: ERROR - could not find GODOT_CONFIG anchor")
-        return html
-
-    script_idx = html.rfind("<script>", 0, idx)
-    if script_idx == -1:
-        print("   JS: ERROR - could not find opening <script> tag")
-        return html
-
-    insert_at = script_idx + len("<script>")
-    html = html[:insert_at] + "\n" + JS + "\n" + html[insert_at:]
-    print("   JS: injected OK")
+    print("   JS: ERROR - could not find injection point")
     return html
 
 def verify(html):
     print("\nVerifying...")
     checks = [
-        ("monitor-overlay CSS",  "#monitor-overlay"        ),
-        ("monitor-frame CSS",    "#monitor-frame"          ),
-        ("monitor-overlay DIV",  'id="monitor-overlay"'    ),
-        ("monitor-frame DIV",    'id="monitor-frame"'      ),
-        ("monitor-iframe DIV",   'id="monitor-iframe"'     ),
-        ("JS function",          "updateMonitorOverlay"    ),
+        ("monitor-overlay CSS",         "#monitor-overlay"        ),
+        ("monitor-frame CSS",           "#monitor-frame"          ),
+        ("monitor-overlay DIV",         'id="monitor-overlay"'    ),
+        ("monitor-frame DIV",           'id="monitor-frame"'      ),
+        ("monitor-iframe DIV",          'id="monitor-iframe"'     ),
+        ("JS function exists",          "updateMonitorOverlay"    ),
     ]
     all_ok = True
     for name, token in checks:
@@ -177,6 +216,19 @@ def verify(html):
         else:
             print("  MISSING " + name)
             all_ok = False
+
+    # Extra check: verify JS comes before index.js
+    js_pos = html.find("updateMonitorOverlay")
+    for pattern in ['<script src="index.js">', '<script src="anselmo.blog.js">']:
+        src_pos = html.find(pattern)
+        if src_pos != -1:
+            if js_pos < src_pos:
+                print("  OK      JS is before index.js (correct load order)")
+            else:
+                print("  WARNING JS is AFTER index.js - Godot may call it before it exists!")
+                all_ok = False
+            break
+
     return all_ok
 
 print("=== patch_export.py ===\n")
@@ -186,7 +238,7 @@ print("\nInjecting...")
 html = read_file()
 html = inject_css(html)
 html = inject_div(html)
-html = inject_js(html)
+html = inject_js_early(html)
 write_file(html)
 
 ok = verify(html)
@@ -194,4 +246,4 @@ ok = verify(html)
 if ok:
     print("\n✅ All checks passed - index.html is ready!")
 else:
-    print("\n❌ Some items are missing - check the errors above.")
+    print("\n❌ Some items missing or in wrong order - check above.")

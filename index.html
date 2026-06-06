@@ -151,11 +151,8 @@ body {
 			<div id="status-notice"></div>
 		</div>
 
-		<script src="index.js"></script>
 		<script>
-	/* -------------------------
-	   MONITOR OVERLAY SYSTEM
-	-------------------------- */
+	/* MONITOR OVERLAY - must be defined before Godot starts */
 	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
 		var frame = document.getElementById('monitor-frame');
 		if (!frame) { console.error('monitor-frame not found'); return; }
@@ -169,18 +166,18 @@ body {
 		var ch = canvas ? canvas.clientHeight : window.innerHeight;
 		var anchorX = normX * cw;
 		var anchorY = normY * ch;
-		var FRAME_W = 420;
-		var FRAME_H = 700;
-		var left = anchorX - FRAME_W / 2;
-		var top  = anchorY - FRAME_H / 2;
-		var MAX_Y = 45; var MAX_X = 30;
-		var ry = Math.max(-MAX_Y, Math.min(MAX_Y, -hAngle));
-		var rx = Math.max(-MAX_X, Math.min(MAX_X,  vAngle));
+		var left = anchorX - 210;
+		var top  = anchorY - 350;
+		var ry = Math.max(-45, Math.min(45, -hAngle));
+		var rx = Math.max(-30, Math.min(30,  vAngle));
 		frame.style.left = left + 'px';
 		frame.style.top  = top  + 'px';
 		frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
 	};
+</script>
 
+		<script src="index.js"></script>
+		<script>
 const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10131928,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
