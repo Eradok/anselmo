@@ -152,33 +152,39 @@ body {
 		</div>
 
 		<script>
-	/* MONITOR OVERLAY - must be defined before Godot starts */
-	globalThis.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
-		var frame = document.getElementById('monitor-frame');
-		if (!frame) { console.error('monitor-frame not found'); return; }
-		if (normX < 0) {
-			frame.style.display = 'none';
-			return;
+	/* MONITOR OVERLAY - polls a queue written by Godot via JavaScriptBridge.eval */
+	window._monitorQueue = null;
+	(function poll() {
+		var q = window._monitorQueue;
+		if (q) {
+			window._monitorQueue = null;
+			var normX = q[0], normY = q[1], hAngle = q[2], vAngle = q[3], scaleFactor = q[4];
+			var frame = document.getElementById('monitor-frame');
+			if (frame) {
+				if (normX < 0) {
+					frame.style.display = 'none';
+				} else {
+					frame.style.display = 'block';
+					var canvas = document.getElementById('canvas');
+					var cw = canvas ? canvas.clientWidth : window.innerWidth;
+					var ch = canvas ? canvas.clientHeight : window.innerHeight;
+					var left = (normX * cw) - 210;
+					var top  = (normY * ch) - 350;
+					var ry = Math.max(-45, Math.min(45, -hAngle));
+					var rx = Math.max(-30, Math.min(30,  vAngle));
+					frame.style.left = left + 'px';
+					frame.style.top  = top  + 'px';
+					frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
+				}
+			}
 		}
-		frame.style.display = 'block';
-		var canvas = document.getElementById('canvas');
-		var cw = canvas ? canvas.clientWidth  : window.innerWidth;
-		var ch = canvas ? canvas.clientHeight : window.innerHeight;
-		var anchorX = normX * cw;
-		var anchorY = normY * ch;
-		var left = anchorX - 210;
-		var top  = anchorY - 350;
-		var ry = Math.max(-45, Math.min(45, -hAngle));
-		var rx = Math.max(-30, Math.min(30,  vAngle));
-		frame.style.left = left + 'px';
-		frame.style.top  = top  + 'px';
-		frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
-	};
+		requestAnimationFrame(poll);
+	})();
 </script>
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10063544,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10062648,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 

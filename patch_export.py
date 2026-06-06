@@ -50,30 +50,35 @@ HTML_DIV = """	<div id="monitor-overlay">
 	</div>
 """
 
-# This goes in its OWN <script> tag BEFORE index.js loads
 JS_EARLY = """<script>
-	/* MONITOR OVERLAY - must be defined before Godot starts */
-	globalThis.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
-		var frame = document.getElementById('monitor-frame');
-		if (!frame) { console.error('monitor-frame not found'); return; }
-		if (normX < 0) {
-			frame.style.display = 'none';
-			return;
+	/* MONITOR OVERLAY - polls a queue written by Godot via JavaScriptBridge.eval */
+	window._monitorQueue = null;
+	(function poll() {
+		var q = window._monitorQueue;
+		if (q) {
+			window._monitorQueue = null;
+			var normX = q[0], normY = q[1], hAngle = q[2], vAngle = q[3], scaleFactor = q[4];
+			var frame = document.getElementById('monitor-frame');
+			if (frame) {
+				if (normX < 0) {
+					frame.style.display = 'none';
+				} else {
+					frame.style.display = 'block';
+					var canvas = document.getElementById('canvas');
+					var cw = canvas ? canvas.clientWidth : window.innerWidth;
+					var ch = canvas ? canvas.clientHeight : window.innerHeight;
+					var left = (normX * cw) - 210;
+					var top  = (normY * ch) - 350;
+					var ry = Math.max(-45, Math.min(45, -hAngle));
+					var rx = Math.max(-30, Math.min(30,  vAngle));
+					frame.style.left = left + 'px';
+					frame.style.top  = top  + 'px';
+					frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
+				}
+			}
 		}
-		frame.style.display = 'block';
-		var canvas = document.getElementById('canvas');
-		var cw = canvas ? canvas.clientWidth  : window.innerWidth;
-		var ch = canvas ? canvas.clientHeight : window.innerHeight;
-		var anchorX = normX * cw;
-		var anchorY = normY * ch;
-		var left = anchorX - 210;
-		var top  = anchorY - 350;
-		var ry = Math.max(-45, Math.min(45, -hAngle));
-		var rx = Math.max(-30, Math.min(30,  vAngle));
-		frame.style.left = left + 'px';
-		frame.style.top  = top  + 'px';
-		frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
-	};
+		requestAnimationFrame(poll);
+	})();
 </script>
 """
 
@@ -135,48 +140,30 @@ def inject_div(html):
     print("  DIV: ERROR - could not find injection point")
     return html
 
-def remove_old_js(html):
-    """Remove any old inline updateMonitorOverlay from inside a <script> block"""
-    if "updateMonitorOverlay" not in html:
-        return html, False
-
-    # If it's already in its own early <script> block before index.js, leave it
-    early_marker = "<script>\n\t/* MONITOR OVERLAY"
-    if early_marker in html:
-        return html, True  # already in correct position
-
-    # Find and remove the old function from wherever it is inside a script block
-    pattern = r'\s*/\*[^*]*MONITOR OVERLAY[^*]*\*/\s*window\.updateMonitorOverlay\s*=\s*function\s*\([^)]*\)\s*\{[^}]*(?:\{[^}]*\}[^}]*)*\};\s*'
-    cleaned = re.sub(pattern, '\n', html, flags=re.DOTALL)
-    if cleaned != html:
-        print("   JS: removed old inline version")
-        return cleaned, False
-    return html, False
-
 def inject_js_early(html):
-    if "updateMonitorOverlay" in html:
-        # Check if it's already in the right place (before index.js src tag)
-        js_pos = html.find("updateMonitorOverlay")
-        # Find the index.js script tag
-        index_js_patterns = [
-            '<script src="index.js">',
-            "<script src='index.js'>",
-            '<script src="anselmo.blog.js">',
-            "<script src='anselmo.blog.js'>",
-        ]
-        for pattern in index_js_patterns:
+    # Already injected correctly?
+    if "_monitorQueue" in html:
+        js_pos = html.find("_monitorQueue")
+        for pattern in ['<script src="index.js">', "<script src='index.js'>",
+                        '<script src="anselmo.blog.js">', "<script src='anselmo.blog.js'>"]:
             src_pos = html.find(pattern)
             if src_pos != -1:
                 if js_pos < src_pos:
-                    print("   JS: already in correct position (before index.js), skipping")
+                    print("   JS: already in correct position, skipping")
                     return html
                 else:
-                    print("   JS: found but in wrong position, will re-inject")
-                    # Remove old version first
-                    html, _ = remove_old_js(html)
+                    print("   JS: found but in wrong position, removing and re-injecting")
+                    # Strip the old block
+                    html = re.sub(
+                        r'<script>\s*/\* MONITOR OVERLAY.*?</script>\s*',
+                        '', html, flags=re.DOTALL
+                    )
                     break
+        else:
+            print("   JS: already present, skipping")
+            return html
 
-    # Find the index.js (or game js) script src tag to inject before it
+    # Inject before the Godot engine JS file
     index_js_patterns = [
         '<script src="index.js">',
         "<script src='index.js'>",
@@ -186,14 +173,14 @@ def inject_js_early(html):
     for pattern in index_js_patterns:
         if pattern in html:
             html = html.replace(pattern, JS_EARLY + "\n\t\t" + pattern, 1)
-            print("   JS: injected OK (own script tag before " + pattern + ")")
+            print("   JS: injected OK (before " + pattern + ")")
             return html
 
-    # Fallback: inject before first <script src=
+    # Fallback: before first <script src=
     match = re.search(r'<script\s+src=', html, re.IGNORECASE)
     if match:
         html = html[:match.start()] + JS_EARLY + "\n\t\t" + html[match.start():]
-        print("   JS: injected OK (before first script src, fallback)")
+        print("   JS: injected OK (fallback: before first script src)")
         return html
 
     print("   JS: ERROR - could not find injection point")
@@ -202,12 +189,13 @@ def inject_js_early(html):
 def verify(html):
     print("\nVerifying...")
     checks = [
-        ("monitor-overlay CSS",         "#monitor-overlay"        ),
-        ("monitor-frame CSS",           "#monitor-frame"          ),
-        ("monitor-overlay DIV",         'id="monitor-overlay"'    ),
-        ("monitor-frame DIV",           'id="monitor-frame"'      ),
-        ("monitor-iframe DIV",          'id="monitor-iframe"'     ),
-        ("JS function exists",          "updateMonitorOverlay"    ),
+        ("monitor-overlay CSS",   "#monitor-overlay"      ),
+        ("monitor-frame CSS",     "#monitor-frame"        ),
+        ("monitor-overlay DIV",   'id="monitor-overlay"'  ),
+        ("monitor-frame DIV",     'id="monitor-frame"'    ),
+        ("monitor-iframe DIV",    'id="monitor-iframe"'   ),
+        ("JS queue system",       "_monitorQueue"         ),
+        ("JS poll loop",          "requestAnimationFrame" ),
     ]
     all_ok = True
     for name, token in checks:
@@ -217,20 +205,21 @@ def verify(html):
             print("  MISSING " + name)
             all_ok = False
 
-    # Extra check: verify JS comes before index.js
-    js_pos = html.find("updateMonitorOverlay")
+    # Verify load order: JS queue must come before index.js
+    js_pos = html.find("_monitorQueue")
     for pattern in ['<script src="index.js">', '<script src="anselmo.blog.js">']:
         src_pos = html.find(pattern)
         if src_pos != -1:
-            if js_pos < src_pos:
-                print("  OK      JS is before index.js (correct load order)")
+            if js_pos != -1 and js_pos < src_pos:
+                print("  OK      JS queue is before index.js (correct load order)")
             else:
-                print("  WARNING JS is AFTER index.js - Godot may call it before it exists!")
+                print("  WARNING JS queue is AFTER index.js - overlay will not work!")
                 all_ok = False
             break
 
     return all_ok
 
+# ── RUN ──────────────────────────────────────────────
 print("=== patch_export.py ===\n")
 check_file()
 print("\nInjecting...")
