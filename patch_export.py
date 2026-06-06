@@ -46,7 +46,7 @@ CSS = """
 
 HTML_DIV = """	<div id="monitor-overlay">
 		<div id="monitor-frame">
-			<iframe id="monitor-iframe" src="https://example.com" scrolling="no" frameborder="0"></iframe>
+			<iframe id="monitor-iframe" src="https://anselmo.blog" scrolling="no" frameborder="0"></iframe>
 		</div>
 	</div>
 """
@@ -136,7 +136,7 @@ def inject_js_early(html):
     if "_monitorQueue" in html:
         js_pos = html.find("_monitorQueue")
         for pattern in ['<script src="index.js">', "<script src='index.js'>",
-                        '<script src="example.com.js">', "<script src='example.com.js'>"]:
+                        '<script src="anselmo.blog.js">', "<script src='anselmo.blog.js'>"]:
             src_pos = html.find(pattern)
             if src_pos != -1:
                 if js_pos < src_pos:
@@ -151,7 +151,7 @@ def inject_js_early(html):
             return html
 
     for pattern in ['<script src="index.js">', "<script src='index.js'>",
-                    '<script src="example.com.js">', "<script src='example.com.js'>"]:
+                    '<script src="anselmo.blog.js">', "<script src='anselmo.blog.js'>"]:
         if pattern in html:
             html = html.replace(pattern, JS_EARLY + "\n\t\t" + pattern, 1)
             print("   JS: injected OK (before " + pattern + ")")
@@ -167,27 +167,49 @@ def inject_js_early(html):
     return html
 
 # ── Service worker patch ──────────────────────────────
-# Simply disable navigationPreload in the activate handler.
-# This stops the "preloadResponse cancelled" warning and prevents
-# the service worker from intercepting the iframe load.
 
 def patch_service_worker(sw):
-    marker = "/* PATCHED: navigationPreload disabled */"
-    if marker in sw:
-        print("   SW: already patched, skipping")
-        return sw, False
+    changed = False
 
-    # Replace the line that enables navigationPreload with one that disables it
-    old = "return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();"
-    new = marker + "\n\t\treturn ('navigationPreload' in self.registration) ? self.registration.navigationPreload.disable() : Promise.resolve();"
+    # Patch 1: disable navigationPreload
+    marker1 = "/* PATCHED: navigationPreload disabled */"
+    if marker1 not in sw:
+        old = "return ('navigationPreload' in self.registration) ? self.registration.navigationPreload.enable() : Promise.resolve();"
+        new = marker1 + "\n\t\treturn ('navigationPreload' in self.registration) ? self.registration.navigationPreload.disable() : Promise.resolve();"
+        if old in sw:
+            sw = sw.replace(old, new, 1)
+            print("   SW: navigationPreload disabled OK")
+            changed = True
+        else:
+            print("   SW: WARNING - could not find navigationPreload line")
+    else:
+        print("   SW: navigationPreload already patched, skipping")
 
-    if old in sw:
-        sw = sw.replace(old, new, 1)
-        print("   SW: navigationPreload disabled OK")
-        return sw, True
+    # Patch 2: bypass fetch handler for cross-origin (iframe) requests
+    marker2 = "/* PATCHED: cross-origin bypass */"
+    if marker2 not in sw:
+        # Find the fetch event listener and inject a bypass at the top of its handler
+        # Godot SW looks like: self.addEventListener('fetch', function(e) { ... })
+        fetch_pattern = re.search(
+            r"(self\.addEventListener\s*\(\s*['\"]fetch['\"].*?function\s*\([^)]*\)\s*\{)",
+            sw, re.DOTALL
+        )
+        if fetch_pattern:
+            insert_after = fetch_pattern.group(0)
+            bypass_code = (
+                insert_after
+                + "\n\t\t" + marker2
+                + "\n\t\tif (!e.request.url.startsWith(self.location.origin)) { return; }"
+            )
+            sw = sw.replace(insert_after, bypass_code, 1)
+            print("   SW: cross-origin bypass injected OK")
+            changed = True
+        else:
+            print("   SW: WARNING - could not find fetch handler to inject bypass")
+    else:
+        print("   SW: cross-origin bypass already patched, skipping")
 
-    print("   SW: WARNING - could not find navigationPreload line (may already be patched or changed)")
-    return sw, False
+    return sw, changed
 
 # ── Verify ────────────────────────────────────────────
 
@@ -211,7 +233,7 @@ def verify_html(html):
             all_ok = False
 
     js_pos = html.find("_monitorQueue")
-    for pattern in ['<script src="index.js">', '<script src="example.com.js">']:
+    for pattern in ['<script src="index.js">', '<script src="anselmo.blog.js">']:
         src_pos = html.find(pattern)
         if src_pos != -1:
             if js_pos != -1 and js_pos < src_pos:
@@ -224,12 +246,18 @@ def verify_html(html):
 
 def verify_sw(sw):
     print("\nVerifying " + SW_FILE + "...")
+    ok = True
     if "navigationPreload disabled" in sw:
         print("  OK      navigationPreload disabled")
-        return True
     else:
         print("  MISSING navigationPreload patch")
-        return False
+        ok = False
+    if "cross-origin bypass" in sw:
+        print("  OK      cross-origin bypass present")
+    else:
+        print("  MISSING cross-origin bypass")
+        ok = False
+    return ok
 
 # ── RUN ──────────────────────────────────────────────
 
