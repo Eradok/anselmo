@@ -89,6 +89,44 @@ body {
 	text-align: center;
 	z-index: 1;
 }
+		
+/* -------------------------
+   MONITOR OVERLAY
+-------------------------- */
+
+#monitor-overlay {
+	position: fixed;
+	top: 0;
+	left: 0;
+	width: 100%;
+	height: 100%;
+	pointer-events: none;
+	z-index: 10;
+	overflow: hidden;
+}
+
+#monitor-frame {
+	position: absolute;
+	width: 420px;
+	height: 700px;
+	transform-origin: center center;
+	pointer-events: auto;
+	will-change: transform, left, top;
+	background: #111;
+	border-radius: 8px;
+	padding: 10px;
+	box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 8px rgba(0,0,0,0.6);
+	display: none;
+}
+
+#monitor-iframe {
+	width: 100%;
+	height: 100%;
+	border: none;
+	border-radius: 4px;
+	display: block;
+}
+
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
@@ -112,6 +150,49 @@ body {
 
 		<script src="index.js"></script>
 		<script>
+
+/* -------------------------
+   MONITOR OVERLAY SYSTEM
+-------------------------- */
+(function () {
+	const frame = document.getElementById('monitor-frame');
+
+	const FRAME_W = 420;
+	const FRAME_H = 700;
+	const MAX_ROTATE_Y = 45;
+	const MAX_ROTATE_X = 30;
+
+	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
+		if (normX < 0) {
+			frame.style.display = 'none';
+			return;
+		}
+		frame.style.display = 'block';
+
+		const canvas = document.getElementById('canvas');
+		const cw = canvas ? canvas.clientWidth  : window.innerWidth;
+		const ch = canvas ? canvas.clientHeight : window.innerHeight;
+
+		const anchorX = normX * cw;
+		const anchorY = normY * ch;
+
+		const left = anchorX - FRAME_W / 2;
+		const top  = anchorY - FRAME_H / 2;
+
+		const ry = Math.max(-MAX_ROTATE_Y, Math.min(MAX_ROTATE_Y, -hAngle));
+		const rx = Math.max(-MAX_ROTATE_X, Math.min(MAX_ROTATE_X,  vAngle));
+
+		frame.style.left = left + 'px';
+		frame.style.top  = top  + 'px';
+		frame.style.transform = [
+			'perspective(1200px)',
+			'rotateY(' + ry + 'deg)',
+			'rotateX(' + rx + 'deg)',
+			'scale(' + scaleFactor + ')'
+		].join(' ');
+	};
+}());
+
 const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10131928,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
