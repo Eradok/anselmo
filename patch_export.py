@@ -53,7 +53,7 @@ HTML_DIV = """	<div id="monitor-overlay">
 # This goes in its OWN <script> tag BEFORE index.js loads
 JS_EARLY = """<script>
 	/* MONITOR OVERLAY - must be defined before Godot starts */
-	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
+	globalThis.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
 		var frame = document.getElementById('monitor-frame');
 		if (!frame) { console.error('monitor-frame not found'); return; }
 		if (normX < 0) {
