@@ -67,11 +67,14 @@ function ensureCrossOriginIsolationHeaders(response) {
  * @returns {Response}
  */
 async function fetchAndCache(event, cache, isCacheable) {
-	// Use the preloaded response, if it's there
+	const url = event.request.url || '';
 	/** @type { Response } */
-	let response = await event.preloadResponse;
+	let response;
+	// Only use preloadResponse for same-origin requests
+	if (url.startsWith(self.location.origin)) {
+		response = await event.preloadResponse;
+	}
 	if (response == null) {
-		// Or, go over network.
 		response = await self.fetch(event.request);
 	}
 
@@ -80,7 +83,6 @@ async function fetchAndCache(event, cache, isCacheable) {
 	}
 
 	if (isCacheable) {
-		// And update the cache
 		cache.put(event.request, response.clone());
 	}
 
@@ -100,11 +102,50 @@ self.addEventListener(
 		const base = referrer.slice(0, referrer.lastIndexOf('/') + 1);
 		const local = url.startsWith(base) ? url.replace(base, '') : '';
 		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
-		
-		if (!event.request.url.startsWith(self.location.origin)) {
+
+		// Let cross-origin requests pass through completely untouched.
+		// This allows the iframe to load without COEP interference.
+		if (!url.startsWith(self.location.origin)) {
 			return;
 		}
 
+		if (isNavigate || isCacheable) {
+			event.respondWith((async () => {
+				const cache = await caches.open(CACHE_NAME);
+				if (isNavigate) {
+					const fullCache = await Promise.all(FULL_CACHE.map((name) => cache.match(name)));
+					const missing = fullCache.some((v) => v === undefined);
+					if (missing) {
+						try {
+							const response = await fetchAndCache(event, cache, isCacheable);
+							return response;
+						} catch (e) {
+							console.error('Network error: ', e); // eslint-disable-line no-console
+							return caches.match(OFFLINE_URL);
+						}
+					}
+				}
+				let cached = await cache.match(event.request);
+				if (cached != null) {
+					if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
+						cached = ensureCrossOriginIsolationHeaders(cached);
+					}
+					return cached;
+				}
+				const response = await fetchAndCache(event, cache, isCacheable);
+				return response;
+			})());
+		} else if (ENSURE_CROSSORIGIN_ISOLATION_HEADERS) {
+			event.respondWith((async () => {
+				let response = await fetch(event.request);
+				response = ensureCrossOriginIsolationHeaders(response);
+				return response;
+			})());
+		}
+	}
+);
+		const local = url.startsWith(base) ? url.replace(base, '') : '';
+		const isCacheable = FULL_CACHE.some((v) => v === local) || (base === referrer && base.endsWith(CACHED_FILES[0]));
 		if (isNavigate || isCacheable) {
 			event.respondWith((async () => {
 				// Try to use cache first
