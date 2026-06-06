@@ -46,7 +46,7 @@ CSS = """
 
 HTML_DIV = """	<div id="monitor-overlay">
 		<div id="monitor-frame">
-			<iframe id="monitor-iframe" src="https://anselmo.blog" scrolling="no" frameborder="0"></iframe>
+			<iframe id="monitor-iframe" src="https://example.com" scrolling="no" frameborder="0"></iframe>
 		</div>
 	</div>
 """
@@ -136,7 +136,7 @@ def inject_js_early(html):
     if "_monitorQueue" in html:
         js_pos = html.find("_monitorQueue")
         for pattern in ['<script src="index.js">', "<script src='index.js'>",
-                        '<script src="anselmo.blog.js">', "<script src='anselmo.blog.js'>"]:
+                        '<script src="example.com.js">', "<script src='example.com.js'>"]:
             src_pos = html.find(pattern)
             if src_pos != -1:
                 if js_pos < src_pos:
@@ -151,7 +151,7 @@ def inject_js_early(html):
             return html
 
     for pattern in ['<script src="index.js">', "<script src='index.js'>",
-                    '<script src="anselmo.blog.js">', "<script src='anselmo.blog.js'>"]:
+                    '<script src="example.com.js">', "<script src='example.com.js'>"]:
         if pattern in html:
             html = html.replace(pattern, JS_EARLY + "\n\t\t" + pattern, 1)
             print("   JS: injected OK (before " + pattern + ")")
@@ -211,7 +211,7 @@ def verify_html(html):
             all_ok = False
 
     js_pos = html.find("_monitorQueue")
-    for pattern in ['<script src="index.js">', '<script src="anselmo.blog.js">']:
+    for pattern in ['<script src="index.js">', '<script src="example.com.js">']:
         src_pos = html.find(pattern)
         if src_pos != -1:
             if js_pos != -1 and js_pos < src_pos:
