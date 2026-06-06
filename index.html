@@ -93,7 +93,6 @@ body {
 /* -------------------------
    MONITOR OVERLAY
 -------------------------- */
-
 #monitor-overlay {
 	position: fixed;
 	top: 0;
@@ -104,7 +103,6 @@ body {
 	z-index: 10;
 	overflow: hidden;
 }
-
 #monitor-frame {
 	position: absolute;
 	width: 420px;
@@ -118,7 +116,6 @@ body {
 	box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 8px rgba(0,0,0,0.6);
 	display: none;
 }
-
 #monitor-iframe {
 	width: 100%;
 	height: 100%;
@@ -134,6 +131,12 @@ body {
 
 	</head>
 	<body>
+			<div id="monitor-overlay">
+		<div id="monitor-frame">
+			<iframe id="monitor-iframe" src="https://anselmo.blog" scrolling="no" frameborder="0"></iframe>
+		</div>
+	</div>
+
 		<canvas id="canvas">
 			Your browser does not support the canvas tag.
 		</canvas>
@@ -150,48 +153,33 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-
-/* -------------------------
-   MONITOR OVERLAY SYSTEM
--------------------------- */
-(function () {
-	const frame = document.getElementById('monitor-frame');
-
-	const FRAME_W = 420;
-	const FRAME_H = 700;
-	const MAX_ROTATE_Y = 45;
-	const MAX_ROTATE_X = 30;
-
+	/* -------------------------
+	   MONITOR OVERLAY SYSTEM
+	-------------------------- */
 	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
+		var frame = document.getElementById('monitor-frame');
+		if (!frame) { console.error('monitor-frame not found'); return; }
 		if (normX < 0) {
 			frame.style.display = 'none';
 			return;
 		}
 		frame.style.display = 'block';
-
-		const canvas = document.getElementById('canvas');
-		const cw = canvas ? canvas.clientWidth  : window.innerWidth;
-		const ch = canvas ? canvas.clientHeight : window.innerHeight;
-
-		const anchorX = normX * cw;
-		const anchorY = normY * ch;
-
-		const left = anchorX - FRAME_W / 2;
-		const top  = anchorY - FRAME_H / 2;
-
-		const ry = Math.max(-MAX_ROTATE_Y, Math.min(MAX_ROTATE_Y, -hAngle));
-		const rx = Math.max(-MAX_ROTATE_X, Math.min(MAX_ROTATE_X,  vAngle));
-
+		var canvas = document.getElementById('canvas');
+		var cw = canvas ? canvas.clientWidth  : window.innerWidth;
+		var ch = canvas ? canvas.clientHeight : window.innerHeight;
+		var anchorX = normX * cw;
+		var anchorY = normY * ch;
+		var FRAME_W = 420;
+		var FRAME_H = 700;
+		var left = anchorX - FRAME_W / 2;
+		var top  = anchorY - FRAME_H / 2;
+		var MAX_Y = 45; var MAX_X = 30;
+		var ry = Math.max(-MAX_Y, Math.min(MAX_Y, -hAngle));
+		var rx = Math.max(-MAX_X, Math.min(MAX_X,  vAngle));
 		frame.style.left = left + 'px';
 		frame.style.top  = top  + 'px';
-		frame.style.transform = [
-			'perspective(1200px)',
-			'rotateY(' + ry + 'deg)',
-			'rotateX(' + rx + 'deg)',
-			'scale(' + scaleFactor + ')'
-		].join(' ');
+		frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
 	};
-}());
 
 const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10131928,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
