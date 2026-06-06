@@ -153,7 +153,7 @@ body {
 
 		<script>
 	/* MONITOR OVERLAY - must be defined before Godot starts */
-	window.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
+	globalThis.updateMonitorOverlay = function (normX, normY, hAngle, vAngle, scaleFactor) {
 		var frame = document.getElementById('monitor-frame');
 		if (!frame) { console.error('monitor-frame not found'); return; }
 		if (normX < 0) {
@@ -178,7 +178,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10063528,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10063544,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
