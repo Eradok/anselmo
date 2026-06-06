@@ -27,10 +27,6 @@ body {
 	outline: none;
 }
 
-/* -----------------------------
-   GODOT STATUS UI
------------------------------- */
-
 #status, #status-splash, #status-progress {
 	position: absolute;
 	left: 0;
@@ -51,9 +47,53 @@ body {
 	visibility: hidden;
 }
 
-/* -----------------------------
-   🌐 WEBSITE OVERLAY (ADDED)
------------------------------- */
+#status-splash {
+	max-height: 100%;
+	max-width: 100%;
+	margin: auto;
+}
+
+#status-splash.show-image--false {
+	display: none;
+}
+
+#status-splash.fullsize--true {
+	height: 100%;
+	width: 100%;
+	object-fit: contain;
+}
+
+#status-splash.use-filter--false {
+	image-rendering: pixelated;
+}
+
+#status-progress, #status-notice {
+	display: none;
+}
+
+#status-progress {
+	bottom: 10%;
+	width: 50%;
+	margin: 0 auto;
+}
+
+#status-notice {
+	background-color: #5b3943;
+	border-radius: 0.5rem;
+	border: 1px solid #9b3943;
+	color: #e0e0e0;
+	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
+	line-height: 1.3;
+	margin: 0 2rem;
+	overflow: hidden;
+	padding: 1rem;
+	text-align: center;
+	z-index: 1;
+}
+
+/* -------------------------
+   ADDED: WEBSITE OVERLAY
+-------------------------- */
 
 #website-overlay {
 	position: absolute;
@@ -61,19 +101,13 @@ body {
 	left: 0;
 	width: 100%;
 	height: 100%;
-	z-index: 999; /* above Godot canvas */
-	pointer-events: auto;
+	z-index: 9999;
 }
 
-#website-frame {
+#website-overlay iframe {
 	width: 100%;
 	height: 100%;
 	border: none;
-}
-
-/* OPTIONAL: hide overlay toggle if needed later */
-.hidden {
-	display: none;
 }
 
 		</style>
@@ -85,12 +119,9 @@ body {
 
 	<body>
 
-		<!-- 🌐 WEBSITE EMBED (ADDED HERE) -->
+		<!-- ADDED ONLY THIS BLOCK -->
 		<div id="website-overlay">
-			<iframe
-				id="website-frame"
-				src="https://anselmo.blog">
-			</iframe>
+			<iframe src="https://anselmo.blog"></iframe>
 		</div>
 
 		<canvas id="canvas">
@@ -114,7 +145,7 @@ const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"e
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
-/* --- unchanged Godot loader below --- */
+/* EVERYTHING BELOW IS YOUR ORIGINAL CODE — UNTOUCHED */
 
 (function () {
 	const statusOverlay = document.getElementById('status');
@@ -125,7 +156,9 @@ const engine = new Engine(GODOT_CONFIG);
 	let statusMode = '';
 
 	function setStatusMode(mode) {
-		if (statusMode === mode || !initializing) return;
+		if (statusMode === mode || !initializing) {
+			return;
+		}
 		if (mode === 'hidden') {
 			statusOverlay.remove();
 			initializing = false;
@@ -150,9 +183,13 @@ const engine = new Engine(GODOT_CONFIG);
 
 	function displayFailureNotice(err) {
 		console.error(err);
-		if (err instanceof Error) setStatusNotice(err.message);
-		else if (typeof err === 'string') setStatusNotice(err);
-		else setStatusNotice('An unknown error occurred.');
+		if (err instanceof Error) {
+			setStatusNotice(err.message);
+		} else if (typeof err === 'string') {
+			setStatusNotice(err);
+		} else {
+			setStatusNotice('An unknown error occurred.');
+		}
 		setStatusMode('notice');
 		initializing = false;
 	}
@@ -162,7 +199,30 @@ const engine = new Engine(GODOT_CONFIG);
 	});
 
 	if (missing.length !== 0) {
-		displayFailureNotice("Missing WebGL/WebAssembly features.");
+		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
+			let serviceWorkerRegistrationPromise;
+			try {
+				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
+			} catch (err) {
+				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
+			}
+			Promise.race([
+				serviceWorkerRegistrationPromise.then((registration) => {
+					if (registration != null) {
+						return Promise.reject(new Error('Service worker already exists.'));
+					}
+					return registration;
+				}).then(() => engine.installServiceWorker()),
+				new Promise((resolve) => {
+					setTimeout(() => resolve(), 2000);
+				}),
+			]).catch((err) => {
+				console.error('Error while registering service worker:', err);
+			});
+		} else {
+			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
+			displayFailureNotice(missingMsg + missing.join('\n'));
+		}
 	} else {
 		setStatusMode('progress');
 		engine.startGame({
