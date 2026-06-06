@@ -1,293 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
-	<head>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, user-scalable=no, initial-scale=1.0">
-		<title>anselmo.blog</title>
-		<style>
-html, body, #canvas {
-	margin: 0;
-	padding: 0;
-	border: 0;
-}
+<head>
+    <meta charset="UTF-8">
+    <title>3D Iframe Test Bench</title>
+    <style>
+        body {
+            background: #222;
+            color: #eee;
+            font-family: sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .controls {
+            background: #333;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: auto 200px auto;
+            gap: 10px;
+            align-items: center;
+        }
+        #stage {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            background: #111;
+            border: 2px dashed #444;
+            overflow: hidden;
+        }
+        #monitor-frame {
+            position: absolute;
+            width: 420px;
+            height: 700px;
+            background: #000;
+            border-radius: 8px;
+            padding: 10px;
+            box-shadow: 0 0 40px rgba(0,0,0,0.8);
+            left: 50%;
+            top: 50%;
+            /* Offset half width/height to center origin */
+            margin-left: -210px;
+            margin-top: -350px;
+            transform-origin: center center;
+            will-change: transform;
+        }
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 4px;
+            background: white;
+        }
+    </style>
+</head>
+<body>
 
-body {
-	color: white;
-	background-color: black;
-	overflow: hidden;
-	touch-action: none;
-}
+    <div class="controls">
+        <label>URL:</label>
+        <input type="text" id="urlInput" value="https://anselmo.blog" style="grid-column: span 2;">
+        
+        <label>Rotate Y (Horizontal):</label>
+        <input type="range" id="ry" min="-90" max="90" value="0">
+        <span id="ry-val">0°</span>
 
-#canvas {
-	display: block;
-}
+        <label>Rotate X (Vertical):</label>
+        <input type="range" id="rx" min="-90" max="90" value="0">
+        <span id="rx-val">0°</span>
 
-#canvas:focus {
-	outline: none;
-}
+        <label>Scale:</label>
+        <input type="range" id="scale" min="0.1" max="2" step="0.05" value="1">
+        <span id="scale-val">1x</span>
+    </div>
 
-#status, #status-splash, #status-progress {
-	position: absolute;
-	left: 0;
-	right: 0;
-}
+    <div id="stage">
+        <div id="monitor-frame">
+            <iframe id="test-iframe" src="https://anselmo.blog"></iframe>
+        </div>
+    </div>
 
-#status, #status-splash {
-	top: 0;
-	bottom: 0;
-}
+    <script>
+        const iframe = document.getElementById('test-iframe');
+        const urlInput = document.getElementById('urlInput');
+        const frame = document.getElementById('monitor-frame');
+        
+        const ry = document.getElementById('ry');
+        const rx = document.getElementById('rx');
+        const scale = document.getElementById('scale');
 
-#status {
-	background-color: #242424;
-	display: flex;
-	flex-direction: column;
-	justify-content: center;
-	align-items: center;
-	visibility: hidden;
-}
+        urlInput.addEventListener('change', () => { iframe.src = urlInput.value; });
 
-#status-splash {
-	max-height: 100%;
-	max-width: 100%;
-	margin: auto;
-}
+        function updateTransform() {
+            document.getElementById('ry-val').textContent = ry.value + '°';
+            document.getElementById('rx-val').textContent = rx.value + '°';
+            document.getElementById('scale-val').textContent = scale.value + 'x';
 
-#status-splash.show-image--false {
-	display: none;
-}
+            frame.style.transform = `perspective(1200px) rotateY(${ry.value}deg) rotateX(${rx.value}deg) scale(${scale.value})`;
+        }
 
-#status-splash.fullsize--true {
-	height: 100%;
-	width: 100%;
-	object-fit: contain;
-}
-
-#status-splash.use-filter--false {
-	image-rendering: pixelated;
-}
-
-#status-progress, #status-notice {
-	display: none;
-}
-
-#status-progress {
-	bottom: 10%;
-	width: 50%;
-	margin: 0 auto;
-}
-
-#status-notice {
-	background-color: #5b3943;
-	border-radius: 0.5rem;
-	border: 1px solid #9b3943;
-	color: #e0e0e0;
-	font-family: 'Noto Sans', 'Droid Sans', Arial, sans-serif;
-	line-height: 1.3;
-	margin: 0 2rem;
-	overflow: hidden;
-	padding: 1rem;
-	text-align: center;
-	z-index: 1;
-}
-		
-/* -------------------------
-   MONITOR OVERLAY
--------------------------- */
-#monitor-overlay {
-	position: fixed;
-	top: 0;
-	left: 0;
-	width: 100%;
-	height: 100%;
-	pointer-events: none;
-	z-index: 10;
-	overflow: hidden;
-}
-#monitor-frame {
-	position: absolute;
-	width: 420px;
-	height: 700px;
-	transform-origin: center center;
-	pointer-events: auto;
-	will-change: transform, left, top;
-	background: #111;
-	border-radius: 8px;
-	padding: 10px;
-	box-shadow: 0 0 40px rgba(0,0,0,0.8), inset 0 0 8px rgba(0,0,0,0.6);
-	display: none;
-}
-#monitor-iframe {
-	width: 100%;
-	height: 100%;
-	border: none;
-	border-radius: 4px;
-	display: block;
-}
-
-		</style>
-		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
-<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<link rel="manifest" href="index.manifest.json">
-
-	</head>
-	<body>
-			<div id="monitor-overlay">
-		<div id="monitor-frame">
-			<iframe id="monitor-iframe" src="https://anselmo.blog" scrolling="no" frameborder="0"></iframe>
-		</div>
-	</div>
-
-		<canvas id="canvas">
-			Your browser does not support the canvas tag.
-		</canvas>
-
-		<noscript>
-			Your browser does not support JavaScript.
-		</noscript>
-
-		<div id="status">
-			<img id="status-splash" class="show-image--true fullsize--true use-filter--true" src="index.png" alt="">
-			<progress id="status-progress"></progress>
-			<div id="status-notice"></div>
-		</div>
-
-		<script>
-	/* MONITOR OVERLAY - polls a queue written by Godot via JavaScriptBridge.eval */
-	window._monitorQueue = null;
-	(function poll() {
-		var q = window._monitorQueue;
-		if (q) {
-			window._monitorQueue = null;
-			var normX = q[0], normY = q[1], hAngle = q[2], vAngle = q[3], scaleFactor = q[4];
-			var frame = document.getElementById('monitor-frame');
-			if (frame) {
-				if (normX < 0) {
-					frame.style.display = 'none';
-				} else {
-					frame.style.display = 'block';
-					var canvas = document.getElementById('canvas');
-					var cw = canvas ? canvas.clientWidth : window.innerWidth;
-					var ch = canvas ? canvas.clientHeight : window.innerHeight;
-					var left = (normX * cw) - 210;
-					var top  = (normY * ch) - 350;
-					var ry = Math.max(-45, Math.min(45, -hAngle));
-					var rx = Math.max(-30, Math.min(30,  vAngle));
-					frame.style.left = left + 'px';
-					frame.style.top  = top  + 'px';
-					frame.style.transform = 'perspective(1200px) rotateY(' + ry + 'deg) rotateX(' + rx + 'deg) scale(' + scaleFactor + ')';
-				}
-			}
-		}
-		requestAnimationFrame(poll);
-	})();
-</script>
-
-		<script src="index.js"></script>
-		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":10062552,"index.wasm":35749181},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4,"serviceWorker":"index.service.worker.js"};
-const GODOT_THREADS_ENABLED = false;
-const engine = new Engine(GODOT_CONFIG);
-
-(function () {
-	const statusOverlay = document.getElementById('status');
-	const statusProgress = document.getElementById('status-progress');
-	const statusNotice = document.getElementById('status-notice');
-
-	let initializing = true;
-	let statusMode = '';
-
-	function setStatusMode(mode) {
-		if (statusMode === mode || !initializing) {
-			return;
-		}
-		if (mode === 'hidden') {
-			statusOverlay.remove();
-			initializing = false;
-			return;
-		}
-		statusOverlay.style.visibility = 'visible';
-		statusProgress.style.display = mode === 'progress' ? 'block' : 'none';
-		statusNotice.style.display = mode === 'notice' ? 'block' : 'none';
-		statusMode = mode;
-	}
-
-	function setStatusNotice(text) {
-		while (statusNotice.lastChild) {
-			statusNotice.removeChild(statusNotice.lastChild);
-		}
-		const lines = text.split('\n');
-		lines.forEach((line) => {
-			statusNotice.appendChild(document.createTextNode(line));
-			statusNotice.appendChild(document.createElement('br'));
-		});
-	}
-
-	function displayFailureNotice(err) {
-		console.error(err);
-		if (err instanceof Error) {
-			setStatusNotice(err.message);
-		} else if (typeof err === 'string') {
-			setStatusNotice(err);
-		} else {
-			setStatusNotice('An unknown error occurred.');
-		}
-		setStatusMode('notice');
-		initializing = false;
-	}
-
-	const missing = Engine.getMissingFeatures({
-		threads: GODOT_THREADS_ENABLED,
-	});
-
-	if (missing.length !== 0) {
-		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {
-			let serviceWorkerRegistrationPromise;
-			try {
-				serviceWorkerRegistrationPromise = navigator.serviceWorker.getRegistration();
-			} catch (err) {
-				serviceWorkerRegistrationPromise = Promise.reject(new Error('Service worker registration failed.'));
-			}
-			// There's a chance that installing the service worker would fix the issue
-			Promise.race([
-				serviceWorkerRegistrationPromise.then((registration) => {
-					if (registration != null) {
-						return Promise.reject(new Error('Service worker already exists.'));
-					}
-					return registration;
-				}).then(() => engine.installServiceWorker()),
-				// For some reason, `getRegistration()` can stall
-				new Promise((resolve) => {
-					setTimeout(() => resolve(), 2000);
-				}),
-			]).then(() => {
-				// Reload if there was no error.
-				window.location.reload();
-			}).catch((err) => {
-				console.error('Error while registering service worker:', err);
-			});
-		} else {
-			// Display the message as usual
-			const missingMsg = 'Error\nThe following features required to run Godot projects on the Web are missing:\n';
-			displayFailureNotice(missingMsg + missing.join('\n'));
-		}
-	} else {
-		setStatusMode('progress');
-		engine.startGame({
-			'onProgress': function (current, total) {
-				if (current > 0 && total > 0) {
-					statusProgress.value = current;
-					statusProgress.max = total;
-				} else {
-					statusProgress.removeAttribute('value');
-					statusProgress.removeAttribute('max');
-				}
-			},
-		}).then(() => {
-			setStatusMode('hidden');
-		}, displayFailureNotice);
-	}
-}());
-		</script>
-	</body>
+        [ry, rx, scale].forEach(input => input.addEventListener('input', updateTransform));
+        updateTransform();
+    </script>
+</body>
 </html>
-
